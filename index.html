@@ -2,212 +2,370 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
 
-<style>
-  * {
-    box-sizing: border-box;
-  }
+  <title>ONDA PRO Scroll Animation</title>
 
-  html, body {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    overflow: hidden;
-    background: transparent;
-  }
+  <style>
+    :root {
+      /* 改成 Wix 區段實際使用的背景色 */
+      --background: #153336;
 
-  canvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
-</style>
+      /* 左右羽化寬度 */
+      --feather-width: 22%;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: var(--background);
+    }
+
+    body {
+      position: relative;
+    }
+
+    #animation {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /*
+      左右漸層遮罩：
+      使用與 Wix 相同的背景色，
+      避免 iframe 透明度限制。
+    */
+
+    #left-feather,
+    #right-feather {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: var(--feather-width);
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    #left-feather {
+      left: 0;
+
+      background: linear-gradient(
+        to right,
+        var(--background) 0%,
+        rgba(21, 51, 54, 0.95) 15%,
+        rgba(21, 51, 54, 0.65) 45%,
+        rgba(21, 51, 54, 0) 100%
+      );
+    }
+
+    #right-feather {
+      right: 0;
+
+      background: linear-gradient(
+        to left,
+        var(--background) 0%,
+        rgba(21, 51, 54, 0.95) 15%,
+        rgba(21, 51, 54, 0.65) 45%,
+        rgba(21, 51, 54, 0) 100%
+      );
+    }
+  </style>
 </head>
 
 <body>
-<canvas id="canvas"></canvas>
 
-<script>
-const FRAME_COUNT = 253;
+  <canvas id="animation"></canvas>
 
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
+  <div id="left-feather"></div>
+  <div id="right-feather"></div>
 
-const images = new Array(FRAME_COUNT);
-const loading = new Set();
+  <script>
+    const FRAME_COUNT = 253;
 
-let requestedFrame = 0;
-let displayedFrame = -1;
+    const canvas = document.getElementById(
+      "animation"
+    );
 
-function frameURL(index) {
-  return "./frames/frame_" +
-    String(index + 1).padStart(4, "0") +
-    ".webp";
-}
+    const ctx = canvas.getContext("2d");
 
-function resizeCanvas() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const images = new Array(FRAME_COUNT);
 
-  canvas.width = Math.round(window.innerWidth * dpr);
-  canvas.height = Math.round(window.innerHeight * dpr);
+    const loading = new Set();
 
-  if (displayedFrame >= 0) {
-    drawFrame(displayedFrame);
-  }
-}
+    let requestedFrame = 0;
+    let displayedFrame = -1;
 
-function drawFrame(index) {
-  const img = images[index];
+    let currentOpacity = 1;
 
-  if (!img || !img.complete || !img.naturalWidth) {
-    return;
-  }
+    /*
+      圖片路徑：
+      frame_0001.webp ～ frame_0253.webp
+    */
 
-  const cw = canvas.width;
-  const ch = canvas.height;
+    function getFrameURL(index) {
+      const number = String(index + 1)
+        .padStart(4, "0");
 
-  const scale = Math.max(
-    cw / img.naturalWidth,
-    ch / img.naturalHeight
-  );
-
-  const width = img.naturalWidth * scale;
-  const height = img.naturalHeight * scale;
-
-  const x = (cw - width) / 2;
-  const y = (ch - height) / 2;
-
-  ctx.clearRect(0, 0, cw, ch);
-  ctx.drawImage(img, x, y, width, height);
-
-  displayedFrame = index;
-}
-
-function loadFrame(index) {
-  if (index < 0 || index >= FRAME_COUNT) return;
-  if (images[index] || loading.has(index)) return;
-
-  loading.add(index);
-
-  const img = new Image();
-
-  img.onload = function () {
-    loading.delete(index);
-    images[index] = img;
-
-    // 只顯示目前真正需要的畫面
-    if (index === requestedFrame) {
-      drawFrame(index);
+      return `./frames/frame_${number}.webp`;
     }
-  };
 
-  img.onerror = function () {
-    loading.delete(index);
-    console.error("圖片載入失敗：", frameURL(index));
-  };
+    /*
+      Canvas 尺寸
+    */
 
-  img.src = frameURL(index);
-}
+    function resizeCanvas() {
+      const dpr = Math.min(
+        window.devicePixelRatio || 1,
+        2
+      );
 
-function setProgress(progress) {
-  const value = Math.max(0, Math.min(1, Number(progress)));
+      canvas.width = Math.round(
+        window.innerWidth * dpr
+      );
 
-  if (!Number.isFinite(value)) return;
+      canvas.height = Math.round(
+        window.innerHeight * dpr
+      );
 
-  requestedFrame = Math.round(value * (FRAME_COUNT - 1));
+      if (displayedFrame >= 0) {
+        drawFrame(displayedFrame);
+      }
+    }
 
-  if (images[requestedFrame]) {
-    drawFrame(requestedFrame);
-  } else {
-    // 保留上一張畫面，直到新圖片載入完成
-    loadFrame(requestedFrame);
-  }
+    /*
+      圖片以 cover 方式填滿播放器
+    */
 
-  // 預載目前畫面附近的圖片
-  for (let offset = -5; offset <= 5; offset++) {
-    loadFrame(requestedFrame + offset);
-  }
-}
+    function drawFrame(index) {
+      const img = images[index];
 
-// 接收 Wix 的控制訊息
-window.addEventListener("message", function (event) {
-  let data = event.data;
+      if (
+        !img ||
+        !img.complete ||
+        !img.naturalWidth
+      ) {
+        return;
+      }
 
-  if (
-    data &&
-    typeof data === "object" &&
-    data.data &&
-    typeof data.data === "object"
-  ) {
-    data = data.data;
-  }
+      const cw = canvas.width;
+      const ch = canvas.height;
 
-  if (!data || data.type !== "scrollProgress") return;
+      const scale = Math.max(
+        cw / img.naturalWidth,
+        ch / img.naturalHeight
+      );
 
-  setProgress(data.progress);
-});
+      const width = img.naturalWidth * scale;
+      const height = img.naturalHeight * scale;
 
-window.addEventListener("resize", resizeCanvas);
+      const x = (cw - width) / 2;
+      const y = (ch - height) / 2;
 
-// 先設定 Canvas 尺寸，再載入第一張
-resizeCanvas();
-loadFrame(0);
+      ctx.clearRect(0, 0, cw, ch);
 
-// 背景預載其餘圖片
-let preloadIndex = 1;
+      ctx.drawImage(
+        img,
+        x,
+        y,
+        width,
+        height
+      );
 
-function preloadBatch() {
-  const end = Math.min(preloadIndex + 8, FRAME_COUNT);
+      displayedFrame = index;
+    }
 
-  for (let i = preloadIndex; i < end; i++) {
-    loadFrame(i);
-  }
+    /*
+      載入單張圖片
+    */
 
-  preloadIndex = end;
+    function loadFrame(index) {
+      if (
+        index < 0 ||
+        index >= FRAME_COUNT
+      ) {
+        return;
+      }
 
-  if (preloadIndex < FRAME_COUNT) {
-    setTimeout(preloadBatch, 80);
-  }
-}
+      if (
+        images[index] ||
+        loading.has(index)
+      ) {
+        return;
+      }
 
-setTimeout(preloadBatch, 200);
+      loading.add(index);
 
+      const img = new Image();
 
-window.addEventListener("message", function (event) {
-    const data = event.data;
+      img.onload = function () {
+        loading.delete(index);
 
-    if (!data || data.type !== "setOpacity") return;
+        images[index] = img;
 
-    const opacity = Math.max(
+        if (index === requestedFrame) {
+          drawFrame(index);
+        }
+      };
+
+      img.onerror = function () {
+        loading.delete(index);
+
+        console.error(
+          "圖片載入失敗：",
+          getFrameURL(index)
+        );
+      };
+
+      img.src = getFrameURL(index);
+    }
+
+    /*
+      根據 Wix 捲動進度切換影格
+    */
+
+    function setProgress(value) {
+      const progress = Number(value);
+
+      if (!Number.isFinite(progress)) {
+        return;
+      }
+
+      const clamped = Math.max(
         0,
-        Math.min(1, Number(data.opacity))
+        Math.min(1, progress)
+      );
+
+      requestedFrame = Math.round(
+        clamped * (FRAME_COUNT - 1)
+      );
+
+      if (images[requestedFrame]) {
+        drawFrame(requestedFrame);
+      } else {
+        loadFrame(requestedFrame);
+      }
+
+      // 優先載入目前影格附近的圖片
+      for (let offset = -5; offset <= 5; offset++) {
+        loadFrame(requestedFrame + offset);
+      }
+    }
+
+    /*
+      控制整個動畫淡入、淡出
+    */
+
+    function setOpacity(value) {
+      const opacity = Number(value);
+
+      if (!Number.isFinite(opacity)) {
+        return;
+      }
+
+      currentOpacity = Math.max(
+        0,
+        Math.min(1, opacity)
+      );
+
+      document.body.style.opacity =
+        String(currentOpacity);
+    }
+
+    /*
+      接收 Wix Velo 訊息
+    */
+
+    window.addEventListener(
+      "message",
+      function (event) {
+        let data = event.data;
+
+        // 相容部分 Wix 訊息包裝格式
+        if (
+          data &&
+          data.data &&
+          typeof data.data === "object"
+        ) {
+          data = data.data;
+        }
+
+        if (!data || !data.type) {
+          return;
+        }
+
+        if (data.type === "scrollProgress") {
+          setProgress(data.progress);
+        }
+
+        if (data.type === "setOpacity") {
+          setOpacity(data.opacity);
+        }
+      }
     );
 
-    document.body.style.opacity = opacity;
-});
+    /*
+      背景預載：
+      每批載入 8 張，避免一次發送
+      253 個圖片請求。
+    */
 
+    function preloadFrames() {
+      let nextFrame = 1;
 
-/* 讓動畫左右邊緣漸漸變透明 */
-canvas {
-    -webkit-mask-image: linear-gradient(
-        to right,
-        transparent 0%,
-        black 12%,
-        black 88%,
-        transparent 100%
+      function loadBatch() {
+        const end = Math.min(
+          nextFrame + 8,
+          FRAME_COUNT
+        );
+
+        for (
+          let i = nextFrame;
+          i < end;
+          i++
+        ) {
+          loadFrame(i);
+        }
+
+        nextFrame = end;
+
+        if (nextFrame < FRAME_COUNT) {
+          setTimeout(loadBatch, 100);
+        }
+      }
+
+      setTimeout(loadBatch, 200);
+    }
+
+    /*
+      啟動
+    */
+
+    window.addEventListener(
+      "resize",
+      resizeCanvas
     );
 
-    mask-image: linear-gradient(
-        to right,
-        transparent 0%,
-        black 12%,
-        black 88%,
-        transparent 100%
-    );
-}
- 
-</script>
+    resizeCanvas();
+
+    loadFrame(0);
+
+    preloadFrames();
+  </script>
+
 </body>
 </html>
