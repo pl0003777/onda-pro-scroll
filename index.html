@@ -173,6 +173,21 @@ function preloadBatch() {
 }
 
 setTimeout(preloadBatch, 200);
+
+
+window.addEventListener("message", function (event) {
+    const data = event.data;
+
+    if (!data || data.type !== "setOpacity") return;
+
+    const opacity = Math.max(
+        0,
+        Math.min(1, Number(data.opacity))
+    );
+
+    document.body.style.opacity = opacity;
+});
+ 
 </script>
 </body>
 </html>
