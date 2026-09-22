@@ -12,11 +12,11 @@
 
   <style>
     :root {
-      /* 改成 Wix 區段實際使用的背景色 */
+      /* 必須與 Wix 區段的背景色相同 */
       --background: #153336;
 
-      /* 左右羽化寬度 */
-      --feather-width: 22%;
+      /* 左右各 3% 的輕微羽化 */
+      --feather-width: 3%;
     }
 
     * {
@@ -37,20 +37,16 @@
       position: relative;
     }
 
+    /* 動畫畫布 */
     #animation {
       position: absolute;
       inset: 0;
+      display: block;
       width: 100%;
       height: 100%;
-      display: block;
     }
 
-    /*
-      左右漸層遮罩：
-      使用與 Wix 相同的背景色，
-      避免 iframe 透明度限制。
-    */
-
+    /* 左右羽化 */
     #left-feather,
     #right-feather {
       position: absolute;
@@ -66,9 +62,7 @@
 
       background: linear-gradient(
         to right,
-        var(--background) 0%,
-        rgba(21, 51, 54, 0.95) 15%,
-        rgba(21, 51, 54, 0.65) 45%,
+        #153336 0%,
         rgba(21, 51, 54, 0) 100%
       );
     }
@@ -78,9 +72,7 @@
 
       background: linear-gradient(
         to left,
-        var(--background) 0%,
-        rgba(21, 51, 54, 0.95) 15%,
-        rgba(21, 51, 54, 0.65) 45%,
+        #153336 0%,
         rgba(21, 51, 54, 0) 100%
       );
     }
@@ -97,37 +89,28 @@
   <script>
     const FRAME_COUNT = 253;
 
-    const canvas = document.getElementById(
-      "animation"
-    );
-
+    const canvas = document.getElementById("animation");
     const ctx = canvas.getContext("2d");
 
     const images = new Array(FRAME_COUNT);
-
     const loading = new Set();
 
     let requestedFrame = 0;
     let displayedFrame = -1;
 
-    let currentOpacity = 1;
-
     /*
-      圖片路徑：
+      圖片編號：
       frame_0001.webp ～ frame_0253.webp
     */
-
     function getFrameURL(index) {
-      const number = String(index + 1)
-        .padStart(4, "0");
+      const number = String(index + 1).padStart(4, "0");
 
       return `./frames/frame_${number}.webp`;
     }
 
     /*
-      Canvas 尺寸
+      自動調整 Canvas 尺寸
     */
-
     function resizeCanvas() {
       const dpr = Math.min(
         window.devicePixelRatio || 1,
@@ -148,9 +131,8 @@
     }
 
     /*
-      圖片以 cover 方式填滿播放器
+      使用 cover 模式顯示動畫
     */
-
     function drawFrame(index) {
       const img = images[index];
 
@@ -190,9 +172,8 @@
     }
 
     /*
-      載入單張圖片
+      載入指定影格
     */
-
     function loadFrame(index) {
       if (
         index < 0 ||
@@ -226,7 +207,7 @@
         loading.delete(index);
 
         console.error(
-          "圖片載入失敗：",
+          "ONDA 圖片載入失敗：",
           getFrameURL(index)
         );
       };
@@ -235,9 +216,8 @@
     }
 
     /*
-      根據 Wix 捲動進度切換影格
+      控制動畫正放與倒放
     */
-
     function setProgress(value) {
       const progress = Number(value);
 
@@ -267,9 +247,8 @@
     }
 
     /*
-      控制整個動畫淡入、淡出
+      Wix 控制動畫淡入、淡出
     */
-
     function setOpacity(value) {
       const opacity = Number(value);
 
@@ -277,53 +256,43 @@
         return;
       }
 
-      currentOpacity = Math.max(
-        0,
-        Math.min(1, opacity)
+      document.body.style.opacity = String(
+        Math.max(0, Math.min(1, opacity))
       );
-
-      document.body.style.opacity =
-        String(currentOpacity);
     }
 
     /*
       接收 Wix Velo 訊息
     */
+    window.addEventListener("message", function (event) {
+      let data = event.data;
 
-    window.addEventListener(
-      "message",
-      function (event) {
-        let data = event.data;
-
-        // 相容部分 Wix 訊息包裝格式
-        if (
-          data &&
-          data.data &&
-          typeof data.data === "object"
-        ) {
-          data = data.data;
-        }
-
-        if (!data || !data.type) {
-          return;
-        }
-
-        if (data.type === "scrollProgress") {
-          setProgress(data.progress);
-        }
-
-        if (data.type === "setOpacity") {
-          setOpacity(data.opacity);
-        }
+      // 相容 Wix 的巢狀訊息格式
+      if (
+        data &&
+        data.data &&
+        typeof data.data === "object"
+      ) {
+        data = data.data;
       }
-    );
+
+      if (!data || !data.type) {
+        return;
+      }
+
+      if (data.type === "scrollProgress") {
+        setProgress(data.progress);
+      }
+
+      if (data.type === "setOpacity") {
+        setOpacity(data.opacity);
+      }
+    });
 
     /*
-      背景預載：
-      每批載入 8 張，避免一次發送
-      253 個圖片請求。
+      背景預載圖片
+      每批 8 張，避免同時發送大量請求
     */
-
     function preloadFrames() {
       let nextFrame = 1;
 
@@ -333,11 +302,7 @@
           FRAME_COUNT
         );
 
-        for (
-          let i = nextFrame;
-          i < end;
-          i++
-        ) {
+        for (let i = nextFrame; i < end; i++) {
           loadFrame(i);
         }
 
@@ -352,18 +317,15 @@
     }
 
     /*
-      啟動
+      初始化
     */
-
     window.addEventListener(
       "resize",
       resizeCanvas
     );
 
     resizeCanvas();
-
     loadFrame(0);
-
     preloadFrames();
   </script>
 
