@@ -1,76 +1,229 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>ONDA PRO Scroll Sequence</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <style>
-  *{box-sizing:border-box}
-  html,body{margin:0;background:#0a1115}
-  body{height:520vh}
-  #stage{position:sticky;top:0;width:100%;height:100vh;overflow:hidden;background:#0a1115}
-  canvas{display:block;width:100%;height:100%;}
-  #loading{position:absolute;inset:0;display:grid;place-items:center;color:#fff;font:12px/1.4 Arial,sans-serif;letter-spacing:.12em;background:#0a1115;transition:opacity .35s;pointer-events:none}
-  #loading.hide{opacity:0}
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: #0b2427;
+  }
+
+  #canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
 </style>
 </head>
+
 <body>
-  <div id="stage">
-    <canvas id="canvas"></canvas>
-    <div id="loading">LOADING ONDA PRO</div>
-  </div>
+
+<canvas id="canvas"></canvas>
+
 <script>
-(() => {
-  const FRAME_COUNT = 253;
-  const FRAME_DIR = 'frames/';
-  const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d', { alpha:false });
-  const loading = document.getElementById('loading');
-  const images = new Array(FRAME_COUNT);
-  let current = -1, target = 0, raf = 0;
+const FRAME_COUNT = 253;
+const FRAME_PATH = "./frames/";
+const FRAME_PREFIX = "frame_";
+const FRAME_EXTENSION = ".webp";
 
-  const src = i => `${FRAME_DIR}frame_${String(i+1).padStart(4,'0')}.webp`;
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
 
-  function fitCanvas(){
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = Math.round(innerWidth*dpr), h = Math.round(innerHeight*dpr);
-    if(canvas.width!==w || canvas.height!==h){ canvas.width=w; canvas.height=h; draw(current<0?0:current); }
+const images = new Array(FRAME_COUNT);
+
+let currentFrame = 0;
+let requestedFrame = 0;
+let firstFrameReady = false;
+
+
+/* -----------------------------
+   Frame filename
+----------------------------- */
+
+function frameURL(index) {
+  return (
+    FRAME_PATH +
+    FRAME_PREFIX +
+    String(index).padStart(4, "0") +
+    FRAME_EXTENSION
+  );
+}
+
+
+/* -----------------------------
+   Load frames
+----------------------------- */
+
+function loadFrame(index) {
+  if (index < 0 || index >= FRAME_COUNT) return;
+
+  if (images[index]) return;
+
+  const img = new Image();
+
+  img.onload = () => {
+    images[index] = img;
+
+    if (index === 0 && !firstFrameReady) {
+      firstFrameReady = true;
+      drawFrame(0);
+    }
+
+    if (index === requestedFrame) {
+      drawFrame(index);
+    }
+  };
+
+  img.src = frameURL(index);
+}
+
+
+/* -----------------------------
+   Preload
+----------------------------- */
+
+loadFrame(0);
+
+/* 先載入前面幾格，讓首屏快速出現 */
+for (let i = 1; i < Math.min(20, FRAME_COUNT); i++) {
+  loadFrame(i);
+}
+
+/* 背景慢慢把剩下的載完 */
+let preloadIndex = 20;
+
+function preloadNext() {
+  if (preloadIndex >= FRAME_COUNT) return;
+
+  const end = Math.min(preloadIndex + 10, FRAME_COUNT);
+
+  for (let i = preloadIndex; i < end; i++) {
+    loadFrame(i);
   }
-  function draw(i){
-    const img = images[i]; if(!img || !img.complete) return;
-    const cw=canvas.width,ch=canvas.height, ir=img.naturalWidth/img.naturalHeight, cr=cw/ch;
-    let sw,sh,sx,sy;
-    if(ir>cr){ sh=img.naturalHeight; sw=sh*cr; sx=(img.naturalWidth-sw)/2; sy=0; }
-    else { sw=img.naturalWidth; sh=sw/cr; sx=0; sy=(img.naturalHeight-sh)/2; }
-    ctx.drawImage(img,sx,sy,sw,sh,0,0,cw,ch);
+
+  preloadIndex = end;
+
+  setTimeout(preloadNext, 40);
+}
+
+preloadNext();
+
+
+/* -----------------------------
+   Canvas sizing
+----------------------------- */
+
+function resizeCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  canvas.width = Math.round(window.innerWidth * dpr);
+  canvas.height = Math.round(window.innerHeight * dpr);
+
+  drawFrame(currentFrame);
+}
+
+window.addEventListener("resize", resizeCanvas);
+
+
+/* -----------------------------
+   Draw image using COVER
+----------------------------- */
+
+function drawFrame(index) {
+  const img = images[index];
+
+  if (!img || !img.complete) {
+    loadFrame(index);
+    return;
   }
-  function animate(){
-    raf=0;
-    if(current!==target){ current += Math.sign(target-current); draw(current); raf=requestAnimationFrame(animate); }
+
+  currentFrame = index;
+
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  const scale = Math.max(
+    cw / img.naturalWidth,
+    ch / img.naturalHeight
+  );
+
+  const width = img.naturalWidth * scale;
+  const height = img.naturalHeight * scale;
+
+  const x = (cw - width) / 2;
+  const y = (ch - height) / 2;
+
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.drawImage(img, x, y, width, height);
+}
+
+
+/* -----------------------------
+   Receive scroll progress
+   from Wix
+----------------------------- */
+
+window.addEventListener("message", (event) => {
+  let data = event.data;
+
+  /* Wix HTML Component 有時會包在 data 裡 */
+  if (
+    data &&
+    typeof data === "object" &&
+    data.data &&
+    typeof data.data === "object"
+  ) {
+    data = data.data;
   }
-  function update(){
-    const max=document.documentElement.scrollHeight-innerHeight;
-    const p=max>0?Math.min(1,Math.max(0,scrollY/max)):0;
-    target=Math.round(p*(FRAME_COUNT-1));
-    if(!raf) raf=requestAnimationFrame(animate);
+
+  if (!data || data.type !== "scrollProgress") return;
+
+  let progress = Number(data.progress);
+
+  if (!Number.isFinite(progress)) return;
+
+  progress = Math.max(0, Math.min(1, progress));
+
+  requestedFrame = Math.round(
+    progress * (FRAME_COUNT - 1)
+  );
+
+  /* 優先確保目前需要的格數有載入 */
+  loadFrame(requestedFrame);
+
+  /* 同時預載附近畫面 */
+  for (let offset = -3; offset <= 3; offset++) {
+    loadFrame(requestedFrame + offset);
   }
-  function load(i){
-    return new Promise(resolve=>{
-      const im=new Image(); images[i]=im; im.onload=resolve; im.onerror=resolve; im.src=src(i);
-    });
-  }
-  async function init(){
-    await load(0); current=0; draw(0); loading.classList.add('hide');
-    // Load every 8th frame first for quick scrubbing, then fill all frames.
-    const priority=[]; for(let i=8;i<FRAME_COUNT;i+=8) priority.push(load(i));
-    await Promise.all(priority);
-    const rest=[]; for(let i=1;i<FRAME_COUNT;i++) if(!images[i]) rest.push(load(i));
-    Promise.all(rest).then(update);
-  }
-  addEventListener('resize',fitCanvas,{passive:true});
-  addEventListener('scroll',update,{passive:true});
-  fitCanvas(); init(); update();
-})();
+
+  drawFrame(requestedFrame);
+});
+
+
+/* -----------------------------
+   Tell parent we're ready
+----------------------------- */
+
+window.parent.postMessage(
+  {
+    type: "ondaReady"
+  },
+  "*"
+);
+
+resizeCanvas();
+
 </script>
+
 </body>
 </html>
