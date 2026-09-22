@@ -5,24 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
-  * {
-    box-sizing: border-box;
-  }
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0b2427;
+}
 
-  html,
-  body {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    overflow: hidden;
-    background: #0b2427;
-  }
-
-  #canvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
 </style>
 </head>
 
@@ -31,10 +26,8 @@
 <canvas id="canvas"></canvas>
 
 <script>
+
 const FRAME_COUNT = 253;
-const FRAME_PATH = "./frames/";
-const FRAME_PREFIX = "frame_";
-const FRAME_EXTENSION = ".webp";
 
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
@@ -42,110 +35,51 @@ const ctx = canvas.getContext("2d");
 const images = new Array(FRAME_COUNT);
 
 let currentFrame = 0;
-let requestedFrame = 0;
-let firstFrameReady = false;
 
 
-/* -----------------------------
-   Frame filename
------------------------------ */
+/* =========================
+   圖片網址
+========================= */
 
-function frameURL(index) {
-  return (
-    FRAME_PATH +
-    FRAME_PREFIX +
+function getFrameURL(index) {
+
+  return "./frames/frame_" +
     String(index).padStart(4, "0") +
-    FRAME_EXTENSION
-  );
+    ".webp";
+
 }
 
 
-/* -----------------------------
-   Load frames
------------------------------ */
-
-function loadFrame(index) {
-  if (index < 0 || index >= FRAME_COUNT) return;
-
-  if (images[index]) return;
-
-  const img = new Image();
-
-  img.onload = () => {
-    images[index] = img;
-
-    if (index === 0 && !firstFrameReady) {
-      firstFrameReady = true;
-      drawFrame(0);
-    }
-
-    if (index === requestedFrame) {
-      drawFrame(index);
-    }
-  };
-
-  img.src = frameURL(index);
-}
-
-
-/* -----------------------------
-   Preload
------------------------------ */
-
-loadFrame(0);
-
-/* 先載入前面幾格，讓首屏快速出現 */
-for (let i = 1; i < Math.min(20, FRAME_COUNT); i++) {
-  loadFrame(i);
-}
-
-/* 背景慢慢把剩下的載完 */
-let preloadIndex = 20;
-
-function preloadNext() {
-  if (preloadIndex >= FRAME_COUNT) return;
-
-  const end = Math.min(preloadIndex + 10, FRAME_COUNT);
-
-  for (let i = preloadIndex; i < end; i++) {
-    loadFrame(i);
-  }
-
-  preloadIndex = end;
-
-  setTimeout(preloadNext, 40);
-}
-
-preloadNext();
-
-
-/* -----------------------------
-   Canvas sizing
------------------------------ */
+/* =========================
+   Canvas 尺寸
+========================= */
 
 function resizeCanvas() {
+
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-  canvas.width = Math.round(window.innerWidth * dpr);
-  canvas.height = Math.round(window.innerHeight * dpr);
+  canvas.width =
+    Math.round(window.innerWidth * dpr);
 
-  drawFrame(currentFrame);
+  canvas.height =
+    Math.round(window.innerHeight * dpr);
+
+  if (images[currentFrame]) {
+    drawFrame(currentFrame);
+  }
+
 }
 
-window.addEventListener("resize", resizeCanvas);
 
-
-/* -----------------------------
-   Draw image using COVER
------------------------------ */
+/* =========================
+   畫面 COVER
+========================= */
 
 function drawFrame(index) {
+
   const img = images[index];
 
-  if (!img || !img.complete) {
-    loadFrame(index);
-    return;
-  }
+  if (!img) return;
 
   currentFrame = index;
 
@@ -157,71 +91,159 @@ function drawFrame(index) {
     ch / img.naturalHeight
   );
 
-  const width = img.naturalWidth * scale;
-  const height = img.naturalHeight * scale;
+  const w = img.naturalWidth * scale;
+  const h = img.naturalHeight * scale;
 
-  const x = (cw - width) / 2;
-  const y = (ch - height) / 2;
+  const x = (cw - w) / 2;
+  const y = (ch - h) / 2;
 
   ctx.clearRect(0, 0, cw, ch);
-  ctx.drawImage(img, x, y, width, height);
+
+  ctx.drawImage(
+    img,
+    x,
+    y,
+    w,
+    h
+  );
+
 }
 
 
-/* -----------------------------
-   Receive scroll progress
-   from Wix
------------------------------ */
+/* =========================
+   載入單張
+========================= */
 
-window.addEventListener("message", (event) => {
-  let data = event.data;
+function loadFrame(index) {
 
-  /* Wix HTML Component 有時會包在 data 裡 */
   if (
-    data &&
-    typeof data === "object" &&
-    data.data &&
-    typeof data.data === "object"
-  ) {
-    data = data.data;
-  }
+    index < 0 ||
+    index >= FRAME_COUNT
+  ) return;
 
-  if (!data || data.type !== "scrollProgress") return;
+  if (images[index]) return;
 
-  let progress = Number(data.progress);
+  const img = new Image();
 
-  if (!Number.isFinite(progress)) return;
+  img.onload = function () {
 
-  progress = Math.max(0, Math.min(1, progress));
+    images[index] = img;
 
-  requestedFrame = Math.round(
-    progress * (FRAME_COUNT - 1)
-  );
+    if (index === currentFrame) {
+      drawFrame(index);
+    }
 
-  /* 優先確保目前需要的格數有載入 */
-  loadFrame(requestedFrame);
+  };
 
-  /* 同時預載附近畫面 */
-  for (let offset = -3; offset <= 3; offset++) {
-    loadFrame(requestedFrame + offset);
-  }
+  img.onerror = function () {
+    console.error(
+      "Frame failed:",
+      getFrameURL(index)
+    );
+  };
 
-  drawFrame(requestedFrame);
-});
+  img.src = getFrameURL(index);
+
+}
 
 
-/* -----------------------------
-   Tell parent we're ready
------------------------------ */
-
-window.parent.postMessage(
-  {
-    type: "ondaReady"
-  },
-  "*"
-);
+/* =========================
+   初始化
+========================= */
 
 resizeCanvas();
+
+/* 最重要：
+   第一張先單獨載入 */
+loadFrame(0);
+
+
+/* =========================
+   預載其他圖片
+========================= */
+
+setTimeout(() => {
+
+  for (
+    let i = 1;
+    i < FRAME_COUNT;
+    i++
+  ) {
+
+    setTimeout(() => {
+      loadFrame(i);
+    }, i * 8);
+
+  }
+
+}, 200);
+
+
+/* =========================
+   接收 Wix 指令
+========================= */
+
+window.addEventListener(
+  "message",
+  function(event) {
+
+    let data = event.data;
+
+    if (
+      data &&
+      data.data &&
+      typeof data.data === "object"
+    ) {
+      data = data.data;
+    }
+
+    if (
+      !data ||
+      data.type !== "scrollProgress"
+    ) return;
+
+    let progress =
+      Number(data.progress);
+
+    if (!Number.isFinite(progress))
+      return;
+
+    progress =
+      Math.max(
+        0,
+        Math.min(1, progress)
+      );
+
+    const frame =
+      Math.round(
+        progress *
+        (FRAME_COUNT - 1)
+      );
+
+    currentFrame = frame;
+
+    if (images[frame]) {
+
+      drawFrame(frame);
+
+    } else {
+
+      loadFrame(frame);
+
+    }
+
+  }
+);
+
+
+/* =========================
+   Resize
+========================= */
+
+window.addEventListener(
+  "resize",
+  resizeCanvas
+);
 
 </script>
 
