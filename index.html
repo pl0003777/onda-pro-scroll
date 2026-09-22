@@ -5,19 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
-html, body {
-  margin: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background: #0b2427;
-}
+  * {
+    box-sizing: border-box;
+  }
 
-canvas {
-  display: block;
-  width: 100vw;
-  height: 100vh;
-}
+  html,
+  body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0b2427;
+  }
+
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
 </style>
 </head>
 
@@ -26,6 +31,10 @@ canvas {
 <canvas id="canvas"></canvas>
 
 <script>
+
+/* =========================
+   基本設定
+========================= */
 
 const FRAME_COUNT = 253;
 
@@ -39,12 +48,18 @@ let currentFrame = 0;
 
 /* =========================
    圖片網址
+
+   程式 index 0
+   = frame_0001.webp
+
+   程式 index 252
+   = frame_0253.webp
 ========================= */
 
 function getFrameURL(index) {
 
   return "./frames/frame_" +
-    String(index).padStart(4, "0") +
+    String(index + 1).padStart(4, "0") +
     ".webp";
 
 }
@@ -56,7 +71,10 @@ function getFrameURL(index) {
 
 function resizeCanvas() {
 
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = Math.min(
+    window.devicePixelRatio || 1,
+    2
+  );
 
   canvas.width =
     Math.round(window.innerWidth * dpr);
@@ -72,7 +90,8 @@ function resizeCanvas() {
 
 
 /* =========================
-   畫面 COVER
+   繪製圖片
+   使用 COVER 模式
 ========================= */
 
 function drawFrame(index) {
@@ -91,27 +110,38 @@ function drawFrame(index) {
     ch / img.naturalHeight
   );
 
-  const w = img.naturalWidth * scale;
-  const h = img.naturalHeight * scale;
+  const width =
+    img.naturalWidth * scale;
 
-  const x = (cw - w) / 2;
-  const y = (ch - h) / 2;
+  const height =
+    img.naturalHeight * scale;
 
-  ctx.clearRect(0, 0, cw, ch);
+  const x =
+    (cw - width) / 2;
+
+  const y =
+    (ch - height) / 2;
+
+  ctx.clearRect(
+    0,
+    0,
+    cw,
+    ch
+  );
 
   ctx.drawImage(
     img,
     x,
     y,
-    w,
-    h
+    width,
+    height
   );
 
 }
 
 
 /* =========================
-   載入單張
+   載入單張圖片
 ========================= */
 
 function loadFrame(index) {
@@ -119,9 +149,13 @@ function loadFrame(index) {
   if (
     index < 0 ||
     index >= FRAME_COUNT
-  ) return;
+  ) {
+    return;
+  }
 
-  if (images[index]) return;
+  if (images[index]) {
+    return;
+  }
 
   const img = new Image();
 
@@ -136,30 +170,40 @@ function loadFrame(index) {
   };
 
   img.onerror = function () {
+
     console.error(
       "Frame failed:",
       getFrameURL(index)
     );
+
   };
 
-  img.src = getFrameURL(index);
+  img.src =
+    getFrameURL(index);
 
 }
 
 
 /* =========================
-   初始化
+   初始化 Canvas
 ========================= */
 
 resizeCanvas();
 
-/* 最重要：
-   第一張先單獨載入 */
+
+/* =========================
+   第一張優先載入
+
+   index 0
+   實際就是：
+   frame_0001.webp
+========================= */
+
 loadFrame(0);
 
 
 /* =========================
-   預載其他圖片
+   背景預載其他 252 張
 ========================= */
 
 setTimeout(() => {
@@ -171,7 +215,9 @@ setTimeout(() => {
   ) {
 
     setTimeout(() => {
+
       loadFrame(i);
+
     }, i * 8);
 
   }
@@ -180,39 +226,72 @@ setTimeout(() => {
 
 
 /* =========================
-   接收 Wix 指令
+   接收 Wix 傳來的
+   Scroll Progress
+
+   progress:
+   0   = 第一張
+   0.5 = 中間
+   1   = 最後一張
 ========================= */
 
 window.addEventListener(
   "message",
   function(event) {
 
-    let data = event.data;
+    let data =
+      event.data;
+
+    /*
+      Wix 有時候會把訊息
+      包在 data 裡面
+    */
 
     if (
       data &&
+      typeof data === "object" &&
       data.data &&
       typeof data.data === "object"
     ) {
-      data = data.data;
+
+      data =
+        data.data;
+
     }
+
 
     if (
       !data ||
       data.type !== "scrollProgress"
-    ) return;
+    ) {
+
+      return;
+
+    }
+
 
     let progress =
       Number(data.progress);
 
-    if (!Number.isFinite(progress))
+
+    if (
+      !Number.isFinite(progress)
+    ) {
+
       return;
+
+    }
+
 
     progress =
       Math.max(
         0,
-        Math.min(1, progress)
+        Math.min(
+          1,
+          progress
+        )
       );
+
 
     const frame =
       Math.round(
@@ -220,15 +299,48 @@ window.addEventListener(
         (FRAME_COUNT - 1)
       );
 
-    currentFrame = frame;
+
+    currentFrame =
+      frame;
+
+
+    /*
+      如果這一格已經載好
+      直接畫出來
+    */
 
     if (images[frame]) {
 
       drawFrame(frame);
 
-    } else {
+    }
+
+    /*
+      還沒載好
+      就立刻載入
+    */
+
+    else {
 
       loadFrame(frame);
+
+    }
+
+
+    /*
+      順便預載目前畫面
+      前後幾格
+    */
+
+    for (
+      let offset = -4;
+      offset <= 4;
+      offset++
+    ) {
+
+      loadFrame(
+        frame + offset
+      );
 
     }
 
@@ -237,7 +349,7 @@ window.addEventListener(
 
 
 /* =========================
-   Resize
+   視窗尺寸改變
 ========================= */
 
 window.addEventListener(
