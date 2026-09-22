@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -9,98 +10,60 @@
     box-sizing: border-box;
   }
 
-  html,
-  body {
-    margin: 0;
+  html, body {
     width: 100%;
     height: 100%;
+    margin: 0;
     overflow: hidden;
     background: #0b2427;
   }
 
   canvas {
     display: block;
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
   }
 </style>
 </head>
 
 <body>
-
 <canvas id="canvas"></canvas>
 
 <script>
-
-/* =========================
-   基本設定
-========================= */
-
 const FRAME_COUNT = 253;
 
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
 const images = new Array(FRAME_COUNT);
+const loading = new Set();
 
-let currentFrame = 0;
+let requestedFrame = 0;
+let displayedFrame = -1;
 
-
-/* =========================
-   圖片網址
-
-   程式 index 0
-   = frame_0001.webp
-
-   程式 index 252
-   = frame_0253.webp
-========================= */
-
-function getFrameURL(index) {
-
+function frameURL(index) {
   return "./frames/frame_" +
     String(index + 1).padStart(4, "0") +
     ".webp";
-
 }
-
-
-/* =========================
-   Canvas 尺寸
-========================= */
 
 function resizeCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-  const dpr = Math.min(
-    window.devicePixelRatio || 1,
-    2
-  );
+  canvas.width = Math.round(window.innerWidth * dpr);
+  canvas.height = Math.round(window.innerHeight * dpr);
 
-  canvas.width =
-    Math.round(window.innerWidth * dpr);
-
-  canvas.height =
-    Math.round(window.innerHeight * dpr);
-
-  if (images[currentFrame]) {
-    drawFrame(currentFrame);
+  if (displayedFrame >= 0) {
+    drawFrame(displayedFrame);
   }
-
 }
 
-
-/* =========================
-   繪製圖片
-   使用 COVER 模式
-========================= */
-
 function drawFrame(index) {
-
   const img = images[index];
 
-  if (!img) return;
-
-  currentFrame = index;
+  if (!img || !img.complete || !img.naturalWidth) {
+    return;
+  }
 
   const cw = canvas.width;
   const ch = canvas.height;
@@ -110,254 +73,106 @@ function drawFrame(index) {
     ch / img.naturalHeight
   );
 
-  const width =
-    img.naturalWidth * scale;
+  const width = img.naturalWidth * scale;
+  const height = img.naturalHeight * scale;
 
-  const height =
-    img.naturalHeight * scale;
+  const x = (cw - width) / 2;
+  const y = (ch - height) / 2;
 
-  const x =
-    (cw - width) / 2;
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.drawImage(img, x, y, width, height);
 
-  const y =
-    (ch - height) / 2;
-
-  ctx.clearRect(
-    0,
-    0,
-    cw,
-    ch
-  );
-
-  ctx.drawImage(
-    img,
-    x,
-    y,
-    width,
-    height
-  );
-
+  displayedFrame = index;
 }
 
-
-/* =========================
-   載入單張圖片
-========================= */
-
 function loadFrame(index) {
+  if (index < 0 || index >= FRAME_COUNT) return;
+  if (images[index] || loading.has(index)) return;
 
-  if (
-    index < 0 ||
-    index >= FRAME_COUNT
-  ) {
-    return;
-  }
-
-  if (images[index]) {
-    return;
-  }
+  loading.add(index);
 
   const img = new Image();
 
   img.onload = function () {
-
+    loading.delete(index);
     images[index] = img;
 
-    if (index === currentFrame) {
+    // 只顯示目前真正需要的畫面
+    if (index === requestedFrame) {
       drawFrame(index);
     }
-
   };
 
   img.onerror = function () {
-
-    console.error(
-      "Frame failed:",
-      getFrameURL(index)
-    );
-
+    loading.delete(index);
+    console.error("圖片載入失敗：", frameURL(index));
   };
 
-  img.src =
-    getFrameURL(index);
-
+  img.src = frameURL(index);
 }
 
+function setProgress(progress) {
+  const value = Math.max(0, Math.min(1, Number(progress)));
 
-/* =========================
-   初始化 Canvas
-========================= */
+  if (!Number.isFinite(value)) return;
 
+  requestedFrame = Math.round(value * (FRAME_COUNT - 1));
+
+  if (images[requestedFrame]) {
+    drawFrame(requestedFrame);
+  } else {
+    // 保留上一張畫面，直到新圖片載入完成
+    loadFrame(requestedFrame);
+  }
+
+  // 預載目前畫面附近的圖片
+  for (let offset = -5; offset <= 5; offset++) {
+    loadFrame(requestedFrame + offset);
+  }
+}
+
+// 接收 Wix 的控制訊息
+window.addEventListener("message", function (event) {
+  let data = event.data;
+
+  if (
+    data &&
+    typeof data === "object" &&
+    data.data &&
+    typeof data.data === "object"
+  ) {
+    data = data.data;
+  }
+
+  if (!data || data.type !== "scrollProgress") return;
+
+  setProgress(data.progress);
+});
+
+window.addEventListener("resize", resizeCanvas);
+
+// 先設定 Canvas 尺寸，再載入第一張
 resizeCanvas();
-
-
-/* =========================
-   第一張優先載入
-
-   index 0
-   實際就是：
-   frame_0001.webp
-========================= */
-
 loadFrame(0);
 
+// 背景預載其餘圖片
+let preloadIndex = 1;
 
-/* =========================
-   背景預載其他 252 張
-========================= */
+function preloadBatch() {
+  const end = Math.min(preloadIndex + 8, FRAME_COUNT);
 
-setTimeout(() => {
-
-  for (
-    let i = 1;
-    i < FRAME_COUNT;
-    i++
-  ) {
-
-    setTimeout(() => {
-
-      loadFrame(i);
-
-    }, i * 8);
-
+  for (let i = preloadIndex; i < end; i++) {
+    loadFrame(i);
   }
 
-}, 200);
+  preloadIndex = end;
 
-
-/* =========================
-   接收 Wix 傳來的
-   Scroll Progress
-
-   progress:
-   0   = 第一張
-   0.5 = 中間
-   1   = 最後一張
-========================= */
-
-window.addEventListener(
-  "message",
-  function(event) {
-
-    let data =
-      event.data;
-
-    /*
-      Wix 有時候會把訊息
-      包在 data 裡面
-    */
-
-    if (
-      data &&
-      typeof data === "object" &&
-      data.data &&
-      typeof data.data === "object"
-    ) {
-
-      data =
-        data.data;
-
-    }
-
-
-    if (
-      !data ||
-      data.type !== "scrollProgress"
-    ) {
-
-      return;
-
-    }
-
-
-    let progress =
-      Number(data.progress);
-
-
-    if (
-      !Number.isFinite(progress)
-    ) {
-
-      return;
-
-    }
-
-
-    progress =
-      Math.max(
-        0,
-        Math.min(
-          1,
-          progress
-        )
-      );
-
-
-    const frame =
-      Math.round(
-        progress *
-        (FRAME_COUNT - 1)
-      );
-
-
-    currentFrame =
-      frame;
-
-
-    /*
-      如果這一格已經載好
-      直接畫出來
-    */
-
-    if (images[frame]) {
-
-      drawFrame(frame);
-
-    }
-
-    /*
-      還沒載好
-      就立刻載入
-    */
-
-    else {
-
-      loadFrame(frame);
-
-    }
-
-
-    /*
-      順便預載目前畫面
-      前後幾格
-    */
-
-    for (
-      let offset = -4;
-      offset <= 4;
-      offset++
-    ) {
-
-      loadFrame(
-        frame + offset
-      );
-
-    }
-
+  if (preloadIndex < FRAME_COUNT) {
+    setTimeout(preloadBatch, 80);
   }
-);
+}
 
-
-/* =========================
-   視窗尺寸改變
-========================= */
-
-window.addEventListener(
-  "resize",
-  resizeCanvas
-);
-
+setTimeout(preloadBatch, 200);
 </script>
-
 </body>
 </html>
